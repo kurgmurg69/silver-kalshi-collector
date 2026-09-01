@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 import os
 import json
-import psycopg2
+import psycopg
 from datetime import datetime, timezone
 
 app = Flask(__name__)
@@ -10,7 +10,7 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 
 
 def get_db():
-    return psycopg2.connect(DATABASE_URL)
+    return psycopg.connect(DATABASE_URL)
 
 
 def init_db():
@@ -51,7 +51,10 @@ def webhook():
     data = request.get_json(silent=True)
 
     if data is None:
-        return jsonify({"ok": False, "error": "No JSON received"}), 400
+        return jsonify({
+            "ok": False,
+            "error": "No JSON received"
+        }), 400
 
     try:
         conn = get_db()
@@ -97,45 +100,60 @@ def webhook():
         cur.close()
         conn.close()
 
-        return jsonify({"ok": True}), 200
+        print("SAVED SILVER TICK:", data, flush=True)
+
+        return jsonify({
+            "ok": True,
+            "saved": True
+        }), 200
 
     except Exception as e:
-        print(f"DATABASE ERROR: {e}", flush=True)
-        return jsonify({"ok": False, "error": str(e)}), 500
+        print("DATABASE ERROR:", str(e), flush=True)
+
+        return jsonify({
+            "ok": False,
+            "error": str(e)
+        }), 500
 
 
 @app.route("/latest", methods=["GET"])
 def latest():
-    conn = get_db()
-    cur = conn.cursor()
+    try:
+        conn = get_db()
+        cur = conn.cursor()
 
-    cur.execute("""
-        SELECT
-            received_at_utc,
-            symbol,
-            bar_time,
-            open,
-            high,
-            low,
-            close,
-            volume,
-            ema9,
-            ema20,
-            rsi14,
-            vwap
-        FROM silver_ticks
-        ORDER BY id DESC
-        LIMIT 20;
-    """)
+        cur.execute("""
+            SELECT
+                received_at_utc,
+                symbol,
+                bar_time,
+                open,
+                high,
+                low,
+                close,
+                volume,
+                ema9,
+                ema20,
+                rsi14,
+                vwap
+            FROM silver_ticks
+            ORDER BY id DESC
+            LIMIT 20;
+        """)
 
-    rows = cur.fetchall()
+        rows = cur.fetchall()
 
-    cur.close()
-    conn.close()
+        cur.close()
+        conn.close()
 
-    return jsonify(rows)
+        return jsonify(rows)
+
+    except Exception as e:
+        return jsonify({
+            "ok": False,
+            "error": str(e)
+        }), 500
 
 
-if __name__ == "__main__":
-    init_db()
-    app.run(host="0.0.0.0", port=10000)
+# Create the database table when Render starts.
+init_db()
